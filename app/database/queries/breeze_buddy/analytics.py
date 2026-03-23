@@ -8,6 +8,8 @@ import uuid as uuid_module
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
+import pytz
+
 from app.core.logger import logger
 
 # Table names
@@ -74,6 +76,15 @@ def is_valid_payload_filter_key(key: str) -> bool:
     return bool(VALID_JSONB_KEY_PATTERN.match(key))
 
 
+def convert_ist_to_utc(dt: datetime) -> datetime:
+    ist = pytz.timezone("Asia/Kolkata")
+    utc = pytz.utc
+
+    if dt.tzinfo is None:
+        dt = ist.localize(dt)
+    return dt.astimezone(utc)
+
+
 def build_analytics_where_clause(
     filters: Dict[str, Any],
     value_offset: int = 0,
@@ -97,21 +108,25 @@ def build_analytics_where_clause(
     if filter_execution_mode:
         conditions.append("lct.execution_mode = 'TELEPHONY'")
 
-    # Date range filters
+    # Date range filters - convert IST to UTC before passing to DB
     if "date_from" in filters and filters["date_from"]:
         date_from = filters["date_from"]
         if isinstance(date_from, datetime):
-            values.append(date_from)
+            values.append(convert_ist_to_utc(date_from))
         else:
-            values.append(datetime.combine(date_from, datetime.min.time()))
+            values.append(
+                convert_ist_to_utc(datetime.combine(date_from, datetime.min.time()))
+            )
         conditions.append(f"lct.call_initiated_time >= ${len(values) + value_offset}")
 
     if "date_to" in filters and filters["date_to"]:
         date_to = filters["date_to"]
         if isinstance(date_to, datetime):
-            values.append(date_to)
+            values.append(convert_ist_to_utc(date_to))
         else:
-            values.append(datetime.combine(date_to, datetime.max.time()))
+            values.append(
+                convert_ist_to_utc(datetime.combine(date_to, datetime.max.time()))
+            )
         conditions.append(f"lct.call_initiated_time < ${len(values) + value_offset}")
 
     # Standard column filters
